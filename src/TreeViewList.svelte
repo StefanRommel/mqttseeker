@@ -53,7 +53,7 @@
                     {#if arrowDown}&#9662{:else}&#x25b8{/if}
                 </span>
                 <HoverBadge text={labelText} />
-                <HoverBadge text={payload} />
+                <HoverBadge text={payload} simplify />
             </span>
             {#if expanded}
                 {#each children as child (child.label)}
@@ -67,7 +67,7 @@
                 <span class="no-arrow" />
                 {#if topicStoreItem != undefined}
                     <HoverBadge text={label} />
-                    <HoverBadge text={payload} />
+                    <HoverBadge text={payload} simplify />
                 {:else}
                     <HoverBadge text="{label} (deleted)" />
                 {/if}
