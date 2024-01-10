@@ -1,6 +1,6 @@
 <script lang="ts">
   let clicked = false;
-  export let copyText;
+  export let copyText: string;
 
   function handleClick() {
     clicked = true;

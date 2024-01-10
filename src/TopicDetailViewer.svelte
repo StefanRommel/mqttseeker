@@ -2,7 +2,9 @@
   import HoverBadge from "./elements/HoverBadge.svelte";
   import Clipboard from "./elements/Clipboard.svelte";
   import type { Connection } from "./mqtt";
+  import { settings } from "./settingStore";
   import { decode } from "@msgpack/msgpack";
+  import { msgpack, helper } from "ts-zeug";
 
   import { topicStore } from "./mqtt";
 
@@ -11,11 +13,11 @@
   let interpretation = "empty";
 
   import hljs from "highlight.js/lib/core";
-  import hljsSvelte from "highlightjs-svelte/dist/index";
+  import hljsSvelte from "highlightjs-svelte";
   import json from "highlight.js/lib/languages/json";
   import "highlight.js/styles/stackoverflow-light.css";
 
-  export let selectedTopic;
+  export let selectedTopic: string;
   export let con: Connection;
 
   hljsSvelte(hljs);
@@ -28,37 +30,57 @@
   let outputQoS: string = "0";
   let outputRetain = true;
   let outputText = "{}";
-  $: parseMsgpack = false;
 
   $: messageDetail = $topicStore[selectedTopic];
   $: payload = messageDetail ? messageDetail.pay : "";
   $: packet = messageDetail ? messageDetail.packet : "";
 
   $: {
-    console.log(parseMsgpack);
     let value;
     if (selectedTopic) value = payload;
-    if (typeof value === "undefined") {
+    if (typeof value === "undefined" || value === "") {
       interpretation = "empty";
       code = "";
     } else {
       try {
         let res;
-        if (parseMsgpack) {
+        if ($settings.parseMsgpack) {
           console.log("1", value);
+          console.log(helper.toHexString(value));
+          //res = msgpack.deserialize(value as Uint8Array);
           res = decode(value as Uint8Array);
+          console.log(decode(value as Uint8Array));
+          console.log(msgpack.deserialize(value as Uint8Array));
+          console.log(
+            "blabla",
+            JSON.stringify(
+              res,
+              (key, value) =>
+                typeof value === "bigint" ? value.toString() : value, // return everything else unchanged
+              2,
+            ),
+          );
         } else {
+          console.log("42", value);
           res = JSON.parse(value.toString());
           console.log("2", res);
         }
         console.log("3", value);
 
-        code = hljs.highlight(JSON.stringify(res, null, 2), {
-          language: "json",
-        }).value;
+        code = hljs.highlight(
+          JSON.stringify(
+            res,
+            (key, value) =>
+              typeof value === "bigint" ? value.toString() : value, // return everything else unchanged
+            2,
+          ),
+          {
+            language: "json",
+          },
+        ).value;
         interpretation = "json";
       } catch (e) {
-        console.warn(e);
+        console.warn(selectedTopic, e);
         code = value.toString();
         interpretation = "raw";
       }
@@ -71,7 +93,7 @@
         JSON.stringify(packet?.properties, null, 2),
         {
           language: "json",
-        }
+        },
       ).value;
     } catch {
       propertiesCode = undefined;
@@ -96,7 +118,7 @@
       inputType,
       outputType,
       qos,
-      outputRetain
+      outputRetain,
     );
   }
 </script>
@@ -129,17 +151,6 @@
       </p>
 
       <pre><code class="language-json hljs codeBig">{@html code}</code></pre>
-      <div class="form-check form-switch">
-        <input
-          class="form-check-input"
-          type="checkbox"
-          id="flexSwitchCheckDefault"
-          bind:checked={parseMsgpack}
-        />
-        <label class="form-check-label" for="flexSwitchCheckDefault">
-          Parse msgpack
-        </label>
-      </div>
     </div>
   </div>
 

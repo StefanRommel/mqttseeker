@@ -1,55 +1,141 @@
+import { encode } from "@msgpack/msgpack";
+import { writable } from "svelte/store";
+import * as tszeug from "ts-zeug";
 
-import {encode} from '@msgpack/msgpack';
-import MQTT, {IClientPublishOptions, MqttClient} from 'mqtt/dist/mqtt.min';
-import {writable} from 'svelte/store';
+import { type Settings } from "./settingStore";
 
-import {Settings, settings} from './settingStore';
-
-export let tree = writable({});
+export let tree = writable<any>({});
 export let online = writable(false);
-export let topicStore = writable({});
+export let topicStore = writable<any>({});
+
+/*
+async function dings() {
+  const client = new tszeug.mqtt.Client(
+    //"ws://192.168.178.92:1884",
+    "ws://localhost:1884",
+    {
+      keepalive: 1 as tszeug.mqtt.Seconds,
+      // will: {
+      //   topic: mqtt.asTopic("hi"),
+      //   retain: true,
+      // },
+    },
+    { alwaysTryToDecodePayloadAsUTF8String: true },
+  );
+
+  for await (
+    const p of tszeug
+      .helper.streamAsyncIterator(client.readable)
+  ) {
+    //mqtt.logPacket(p);
+    switch (p.type) {
+      case tszeug.mqtt.ControlPacketType.ConnAck: {
+        if (p.connect_reason_code !== tszeug.mqtt.ConnectReasonCode.Success) {
+          console.error("%cCouldn't connect", "color: red", p);
+          break;
+        }
+        tszeug.mqtt.logPacket(
+          await client.subscribe({
+            subscriptions: [{
+              topic: tszeug.mqtt.asTopicFilter("#"),
+              retain_as_published: true,
+            }],
+            properties: { subscription_identifier: 5 },
+          }),
+        );
+        // await client.publish({
+        //   topic: mqtt.asTopic("hi"),
+        //   payload: "wie gehts?",
+        //   retain: true,
+        // });
+        break;
+      }
+      case tszeug.mqtt.ControlPacketType.Publish: {
+        if (p.payload === undefined) {
+          console.log(
+            `%c${p.topic}`,
+            `${p.retain ? "color: blue;" : ""} font-weight: bold`,
+          );
+        } else {
+          try {
+            console.log(
+              `%c${p.topic}`,
+              `${p.retain ? "color: blue;" : ""} font-weight: bold`,
+              JSON.parse(p.payload as string),
+            );
+          } catch {
+            console.log(
+              `%c${p.topic}`,
+              `${p.retain ? "color: blue;" : ""} font-weight: bold`,
+              p.payload as string,
+            );
+          }
+        }
+        break;
+      }
+      case tszeug.mqtt.ControlPacketType.Disconnect: {
+        console.log("%cDisconnect", "color: red", p);
+        break;
+      }
+      case tszeug.mqtt.CustomPacketType.ConnectionClosed: {
+        console.log("%cConnectionClosed", "color: red", p);
+        break;
+      }
+      case tszeug.mqtt.CustomPacketType.Error: {
+        console.error("%cError", "color: red", p);
+        break;
+      }
+    }
+  }
+
+  console.log("%cexiting", "color: red");
+}
+dings();*/
 
 export class Connection {
-  mqtt: MqttClient;
+  client?: tszeug.mqtt.Client;
   settings: Settings;
-  tree: {label: string, children: []};
-  topicStore = {}  // I'm not happy with this
+  tree: { label: string; children: [] };
+  topicStore = {}; // I'm not happy with this
 
   constructor() {
     settings.subscribe((value) => (this.settings = value));
 
-    this.tree = {label: this.settings.url, children: []};
+    this.tree = { label: this.settings.address, children: [] };
     tree.set(this.tree);
   }
 
-  public async connect() {
-    this.mqtt = await MQTT.connect(this.settings.url, {
-      protocolVersion: 5,
-      username: this.settings.username,
-      password: this.settings.password,
-    });
+  public async connect(settings: Settings) {
+    if (this.settings) {
+      this.client = new tszeug.mqtt.Client(
+        this.settings.address,
+        this.settings.connectPacket,
+      );
+    }
 
     this.settings.subscriptions.forEach((val) => {
-      this.mqtt.subscribe([val.topic], {qos: val.qos});
+      this.client!.subscribe([val.topic], { qos: val.qos });
     });
 
-    this.mqtt.on('message', (topic, payload, packet) => {
+    this.client.on("message", (topic, payload, packet) => {
       const pay = payload;
       // console.log(pay);
       if (pay.length > 0) {
-        this.topicStore[topic] = {pay: pay, packet: packet};
+        this.topicStore[topic] = { pay: pay, packet: packet };
         topicStore.set(this.topicStore);
 
-        const topicPart = topic.split('/');
-        topicPart.unshift(this.settings.url);
+        const topicPart = topic.split("/");
+        topicPart.unshift(this.settings.address);
         let current = null;
         let existing = null;
         let i = 0;
 
-        for (var y = 0; y < topicPart.length; y++) {
+        for (let y = 0; y < topicPart.length; y++) {
           if (y == 0) {
-            if (!this.tree.children ||
-                typeof this.tree.children == 'undefined') {
+            if (
+              !this.tree.children ||
+              typeof this.tree.children == "undefined"
+            ) {
               this.tree = {
                 label: topicPart[y],
                 children: [],
@@ -75,75 +161,93 @@ export class Connection {
             }
           }
         }
-        tree.update((tree) => tree = this.tree);  // force tree update
+        tree.update((tree) => tree = this.tree); // force tree update
       } else {
         delete this.topicStore[topic];
         topicStore.set(this.topicStore);
       }
     });
 
-    this.mqtt.on('offline', () => {
-      console.log('offline');
+    this.client.on("offline", () => {
+      console.log("offline");
       online.set(false);
     });
 
-    this.mqtt.on('connect', () => {
-      console.log('online');
+    this.client.on("connect", () => {
+      console.log("online");
       online.set(true);
     });
 
-    this.mqtt.on('disconnect', () => {
-      console.log('disconnect');
+    this.client.on("disconnect", () => {
+      console.log("disconnect");
     });
 
-    this.mqtt.on('error', (error) => {
+    this.client.on("error", (error) => {
       console.error(`mqtt event error ${JSON.stringify(error)}`);
     });
   }
 
-  public async disconnect() {
-    console.log('end');
-    this.mqtt.end();
+  public disconnect() {
+    console.log("end");
+    this.client!.end();
     online.set(false);
-    this.tree = {label: '', children: []};
+    this.tree = { label: "", children: [] };
     tree.set(this.tree);
   }
 
-  public async publish(
-      topic: string, message: string, inputType: 'JSON'|'raw',
-      outputType: 'JSON'|'raw'|'msgpack', qos: 0|1|2, retain: boolean) {
-    if (topic === '') return;
+  public publish(
+    topic: string,
+    message: string,
+    inputType: "JSON" | "raw",
+    outputType: "JSON" | "raw" | "msgpack",
+    qos: 0 | 1 | 2,
+    retain: boolean,
+  ) {
+    if (topic === "") return;
 
-
-    let options:
-        IClientPublishOptions = {qos: qos, retain: retain, properties: {}};
-    if (message === '') {
-      this.mqtt.publish(topic, '', options)
+    const options = {
+      qos: qos,
+      retain: retain,
+      properties: {},
+    };
+    if (message === "") {
+      this.client.publish(topic, "", options);
       return;
     }
 
-    if (inputType === 'JSON') {
+    if (inputType === "JSON") {
       switch (outputType) {
-        case 'JSON':
-        case 'raw':
-          this.mqtt.publish(topic, JSON.stringify(JSON.parse(message)), options)
+        case "JSON":
+        case "raw":
+          this.client.publish(
+            topic,
+            JSON.stringify(JSON.parse(message)),
+            options,
+          );
           break;
-        case 'msgpack': {
-          this.mqtt.publish(
-              topic, encode(JSON.parse(message)) as Buffer, options);
+        case "msgpack": {
+          this.client.publish(
+            topic,
+            encode(JSON.parse(message)) as Buffer,
+            options,
+          );
           break;
         }
       }
-    } else if (inputType === 'raw') {
+    } else if (inputType === "raw") {
       switch (outputType) {
-        case 'JSON':
-          this.mqtt.publish(topic, JSON.stringify(JSON.parse(message)), options)
+        case "JSON":
+          this.client.publish(
+            topic,
+            JSON.stringify(JSON.parse(message)),
+            options,
+          );
           break;
-        case 'raw':
-          this.mqtt.publish(topic, message, options)
+        case "raw":
+          this.client.publish(topic, message, options);
           break;
-        case 'msgpack':
-          this.mqtt.publish(topic, encode(message) as Buffer, options);
+        case "msgpack":
+          this.client.publish(topic, encode(message) as Buffer, options);
           break;
       }
     }

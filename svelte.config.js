@@ -1,5 +1,7 @@
-import { vitePreprocess } from 'npm:@sveltejs/vite-plugin-svelte@^2.4.1'
+import { vitePreprocess } from '@sveltejs/vite-plugin-svelte'
 
 export default {
-  preprocess: vitePreprocess()
+  // Consult https://svelte.dev/docs#compile-time-svelte-preprocess
+  // for more information about preprocessors
+  preprocess: vitePreprocess(),
 }

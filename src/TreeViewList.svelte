@@ -1,54 +1,72 @@
 <script context="module">
-    const _expansionState = {}
+    const _expansionState = {};
 </script>
 
 <script lang="ts">
-    import {topicStore} from "./mqtt"
-    import HoverBadge from "./elements/HoverBadge.svelte"
-    import {settings} from "./settingStore"
+    import { topicStore } from "./mqtt";
+    import HoverBadge from "./elements/HoverBadge.svelte";
+    import { settings } from "./settingStore";
+    import { decode } from "@msgpack/msgpack";
+    import { msgpack } from "ts-zeug";
 
-    export let tree
-    export let level = 0
-    $: label = tree.label ?? ""
-    $: topic_message = tree.topic_message ?? ""
-    $: children = tree.children ?? []
+    export let tree;
+    export let level = 0;
+    $: label = tree.label ?? "";
+    $: topic_message = tree.topic_message ?? "";
+    $: children = tree.children ?? [];
 
-    $: topicStoreItem = $topicStore[getWholeTopicName()]
+    $: topicStoreItem = $topicStore[getWholeTopicName()];
 
-    export let topic = ""
+    export let topic = "";
 
-    let expanded = _expansionState[label] || false
+    let expanded = _expansionState[label] || false;
     const toggleExpansion = () => {
-        expanded = _expansionState[label] = !expanded
-    }
-    $: arrowDown = expanded
-    $: labelText = ""
+        expanded = _expansionState[label] = !expanded;
+    };
+    $: arrowDown = expanded;
+    $: labelText = "";
 
     $: {
-        let text = ""
+        let text = "";
         if (level !== 0) {
-            text += label + " (" + children.length + " topics)"
-        } else text += $settings.url
+            text += label + " (" + children.length + " topics)";
+        } else text += $settings.address;
 
-        labelText = text + " " + topic_message
+        labelText = text + " " + topic_message;
     }
 
-    export let clickHandler
+    export let clickHandler;
 
     function getWholeTopicName() {
-        if (level === 0) return undefined
-        if (!topic) return label
-        return topic.substring(1) + "/" + label
+        if (level === 0) return undefined;
+        if (!topic) return label;
+        return topic.substring(1) + "/" + label;
     }
 
-    $: messageDetail = $topicStore[getWholeTopicName()]
-    $: payload = messageDetail ? messageDetail.pay : ""
+    function handlePayload(msg: any) {
+        if (msg !== undefined) {
+            if ($settings.parseMsgpack) {
+                return JSON.stringify(
+                    msgpack.deserialize(msg.pay),
+                    (key, value) =>
+                        typeof value === "bigint" ? value.toString() : value, // return everything else unchanged
+                );
+            } else return msg.pay;
+        } else {
+            return "";
+        }
+    }
+
+    $: payload = handlePayload($topicStore[getWholeTopicName()]);
 </script>
 
 <ul class="list-unstyled">
     {#if level === 0 || children.length > 0}
         <li>
-            <span on:click={toggleExpansion} on:click={clickHandler(getWholeTopicName())}>
+            <span
+                on:click={toggleExpansion}
+                on:click={clickHandler(getWholeTopicName())}
+            >
                 <span class="fs-6">
                     {#if arrowDown}&#9662{:else}&#x25b8{/if}
                 </span>
@@ -57,7 +75,12 @@
             </span>
             {#if expanded}
                 {#each children as child (child.label)}
-                    <svelte:self tree={child} level={level + 1} topic={level === 0 ? topic : topic + "/" + label} {clickHandler} />
+                    <svelte:self
+                        tree={child}
+                        level={level + 1}
+                        topic={level === 0 ? topic : topic + "/" + label}
+                        {clickHandler}
+                    />
                 {/each}
             {/if}
         </li>

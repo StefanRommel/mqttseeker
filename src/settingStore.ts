@@ -1,37 +1,31 @@
-import {writable} from 'svelte/store';
+import { writable } from "svelte/store";
+import { mqtt } from "ts-zeug";
 
 export interface Settings {
-  username?: string;
-  password?: string;
-  protocol: 'ws://'|'mqtt://';
-  host: string;
-  port: number;
-  basePath?: string;
-  url: string
-  subscriptions: Array<SubscribeTopic>;
-}
-
-export interface SubscribeTopic {
-  topic: string;
-  qos: 0|1|2;
+  address?: string;
+  connectPacket?: mqtt.OmitPacketType<mqtt.ConnectPacket>;
+  subscription?: mqtt.MakeSerializePacketType<
+    Omit<mqtt.SubscribePacket, "packet_identifier">
+  >;
+  parseMsgpack: boolean;
 }
 
 const defaultSettings: Settings = {
-  username: 'stefan',
-  password: 'stefan',
-  protocol: 'ws://',
-  host: '192.168.50.100',
-  port: 1884,
-  url: 'ws://192.168.50.100:',
-  subscriptions: [{topic: '#', qos: 0}]
+  address: "ws://localhost:1884",
+  parseMsgpack: false,
+  connectPacket: {},
+  subscription: {
+    subscriptions: [{
+      topic: mqtt.asTopicFilter("#"),
+      retain_as_published: true,
+    }],
+  },
 };
 
 export const settings = writable<Settings>(
-    JSON.parse(localStorage.getItem('settings')) || defaultSettings);
+  JSON.parse(localStorage.getItem("settings") ?? "") ?? defaultSettings,
+);
 
 settings.subscribe((value) => {
-  value.url = value.protocol + value.host;
-  if (value.port) value.url += ':' + value.port;
-  if (value.basePath) value.url += '/' + value.basePath;
   localStorage.settings = JSON.stringify(value);
 });
